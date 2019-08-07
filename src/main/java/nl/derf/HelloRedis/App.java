@@ -10,9 +10,7 @@ import redis.clients.jedis.exceptions.JedisException;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.List;
+import java.util.Arrays;
 
 public class App {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -40,16 +38,16 @@ public class App {
                 throw new RuntimeException("No data received - does the key exist?");
             }
 
-            RedisKeyValue redisKeyValue = new RedisKeyValue(KEY, Base64.getEncoder().encodeToString(dumpedVal));
-            RedisKeyValue[] redisKeyValues = {redisKeyValue};
+            RedisDumpedKeyValue redisKeyValue = new RedisDumpedKeyValue(KEY,dumpedVal);
+            RedisDumpedKeyValue[] redisKeyValues = {redisKeyValue};
 
             MAPPER.writeValue(new File("/tmp/test.json"), redisKeyValues);
             System.out.println("Wrote JSON file to /tmp/test.json");
 
             // Restore
 
-            RedisKeyValue[] deserialised = MAPPER.readValue(new File("/tmp/test.json"), RedisKeyValue[].class);
-            assert(redisKeyValues[0].getValue().equals(deserialised[0].getValue()));
+            RedisDumpedKeyValue[] deserialised = MAPPER.readValue(new File("/tmp/test.json"), RedisDumpedKeyValue[].class);
+            assert(Arrays.equals(redisKeyValues[0].getValue(), deserialised[0].getValue()));
 
 
         } catch (JedisException je) {

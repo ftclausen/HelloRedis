@@ -3,12 +3,12 @@ package nl.derf.HelloRedis;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
-public class RedisKeyValue {
+public class RedisDumpedKeyValue {
   final private String key;
-  final private String value;
+  final private byte[] value;
 
   @JsonCreator
-  public RedisKeyValue(@JsonProperty("key") String key, @JsonProperty("value") String value) {
+  RedisDumpedKeyValue(@JsonProperty("key") String key, @JsonProperty("value") byte[] value) {
     this.key = key;
     this.value = value;
   }
@@ -17,7 +17,7 @@ public class RedisKeyValue {
     return key;
   }
 
-  public String getValue() {
+  byte[] getValue() {
     return this.value;
   }
 }
