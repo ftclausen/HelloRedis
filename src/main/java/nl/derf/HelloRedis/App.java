@@ -3,12 +3,19 @@
  */
 package nl.derf.HelloRedis;
 
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.exceptions.JedisException;
+
 public class App {
-    public String getGreeting() {
-        return "Hello world.";
-    }
 
     public static void main(String[] args) {
-        System.out.println(new App().getGreeting());
+        Jedis jedis = new Jedis("localhost");
+        try {
+            jedis.set("name", "fred");
+            String value = jedis.get("name");
+            System.out.println("Round tripped name: " + value);
+        } catch (JedisException je) {
+            System.out.println("Could not connect to Redis: " + je);
+        }
     }
 }
