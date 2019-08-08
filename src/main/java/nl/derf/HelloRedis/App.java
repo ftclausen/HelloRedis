@@ -11,47 +11,48 @@ import redis.clients.jedis.exceptions.JedisException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Set;
 
 public class App {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String KEY = "name";
-    private static final String VALUE = "fred";
-
-    private static void putSomething(Jedis jedis) {
-        if (jedis.get(KEY) == null) {
-            jedis.set(KEY, VALUE);
-            String value = jedis.get(KEY);
-            System.out.println("Round tripped name: " + value);
-        }
-    }
+    private static final String PREFIX = "253438719";
 
     public static void main(String[] args) throws IOException  {
         MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
         Jedis jedis = new Jedis("localhost");
 
         try {
-            putSomething(jedis);
-
-            // Dump
-            byte[] dumpedVal = jedis.dump(KEY);
-            if (dumpedVal == null) {
-                throw new RuntimeException("No data received - does the key exist?");
+            Set<String> matchingKeys = jedis.keys(PREFIX + "*");
+            if (matchingKeys.size() == 0) {
+                System.err.println("No keys found for prefix " + PREFIX);
             }
 
-            RedisDumpedKeyValue redisKeyValue = new RedisDumpedKeyValue(KEY,dumpedVal);
-            RedisDumpedKeyValue[] redisKeyValues = {redisKeyValue};
+            RedisDumpedKeyValue[] dumpedKeyValues = new RedisDumpedKeyValue[matchingKeys.size()];
 
-            MAPPER.writeValue(new File("/tmp/test.json"), redisKeyValues);
+            int index = 0;
+            for (String key: matchingKeys) {
+                dumpedKeyValues[index] = new RedisDumpedKeyValue(key, jedis.dump(key));
+                index += 1;
+            }
+
+            MAPPER.writeValue(new File("/tmp/test.json"), dumpedKeyValues);
             System.out.println("Wrote JSON file to /tmp/test.json");
 
             // Restore
 
             RedisDumpedKeyValue[] deserialised = MAPPER.readValue(new File("/tmp/test.json"), RedisDumpedKeyValue[].class);
-            assert(Arrays.equals(redisKeyValues[0].getValue(), deserialised[0].getValue()));
 
+            if (Arrays.equals(dumpedKeyValues, deserialised)) {
+                System.out.println("OK, restored values are the same as saved values");
+            } else {
+                System.err.println(("ERROR: round trip failed: restored data not the same as saved data"));
+            }
 
+            for(RedisDumpedKeyValue redisDumpedKeyValue: deserialised) {
+                jedis.restore("RESTORED_" + redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
+            }
         } catch (JedisException je) {
-            System.out.println("Could not connect to Redis: " + je);
+            System.out.println("Redis error: " + je);
         }
     }
 }

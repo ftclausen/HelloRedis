@@ -8,7 +8,8 @@ repositories {
 }
 
 dependencies {
-    implementation 'redis.clients:jedis:3.1.0',
+    implementation 'com.google.guava:guava:27.0.1-jre',
+                   'redis.clients:jedis:3.1.0',
                    'com.fasterxml.jackson.core:jackson-databind:2.9.9.3'
 }
 
