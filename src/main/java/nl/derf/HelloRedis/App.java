@@ -3,6 +3,13 @@
  */
 package nl.derf.HelloRedis;
 
+/*
+Notes for using with Learn:
+
+- Just specify path to bb-config.properties as cmd line arg
+- Timestamp logging to stdout
+ */
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import redis.clients.jedis.Jedis;
@@ -15,41 +22,55 @@ import java.util.Set;
 
 public class App {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String PREFIX = "253438719";
+    private static final String PREFIX = "1793091408";
+    private static final Jedis JEDIS = new Jedis("localhost");
 
-    public static void main(String[] args) throws IOException  {
-        MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
-        Jedis jedis = new Jedis("localhost");
-
+    private static void dump() {
         try {
-            Set<String> matchingKeys = jedis.keys(PREFIX + "*");
+            Set<String> matchingKeys = JEDIS.keys(PREFIX + "*");
             if (matchingKeys.size() == 0) {
                 System.err.println("No keys found for prefix " + PREFIX);
+                System.exit(1);
             }
 
+            System.out.println("Found " + matchingKeys.size() + " keys");
             RedisDumpedKeyValue[] dumpedKeyValues = new RedisDumpedKeyValue[matchingKeys.size()];
 
             int index = 0;
-            for (String key: matchingKeys) {
-                dumpedKeyValues[index] = new RedisDumpedKeyValue(key, jedis.dump(key));
+            for (String key : matchingKeys) {
+                dumpedKeyValues[index] = new RedisDumpedKeyValue(key, JEDIS.dump(key));
                 index += 1;
             }
 
             MAPPER.writeValue(new File("/tmp/test.json"), dumpedKeyValues);
             System.out.println("Wrote JSON file to /tmp/test.json");
+        } catch (JedisException|IOException je) {
+            System.err.println("Redis error exporting: " + je);
+            System.exit(1);
+        }
+    }
 
-            // Restore
-
+    private static void restore() {
+        try {
             RedisDumpedKeyValue[] deserialised = MAPPER.readValue(new File("/tmp/test.json"), RedisDumpedKeyValue[].class);
 
-            if (Arrays.equals(dumpedKeyValues, deserialised)) {
-                System.out.println("OK, restored values are the same as saved values");
-            } else {
-                System.err.println(("ERROR: round trip failed: restored data not the same as saved data"));
+            for (RedisDumpedKeyValue redisDumpedKeyValue : deserialised) {
+                JEDIS.restore(redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
             }
+            System.out.println("Successfully restored " + deserialised.length + " keys");
+        } catch (JedisException|IOException je) {
+            System.err.println("Redis error importing: " + je);
+            System.exit(1);
+        }
+    }
+    public static void main(String[] args) throws IOException  {
+        MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
 
-            for(RedisDumpedKeyValue redisDumpedKeyValue: deserialised) {
-                jedis.restore("RESTORED_" + redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
+        try {
+            if (args.length == 1 && args[0].equals("--restore")) {
+                restore();
+            } else {
+                dump();
             }
         } catch (JedisException je) {
             System.out.println("Redis error: " + je);

@@ -18,11 +18,11 @@ public class RedisDumpedKeyValue {
     this.value = value;
   }
 
-  String getKey() {
+  public String getKey() {
     return key;
   }
 
-  byte[] getValue() {
+  public byte[] getValue() {
     return this.value;
   }
 
