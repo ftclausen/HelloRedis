@@ -10,70 +10,77 @@ Notes for using with Learn:
 - Timestamp logging to stdout
  */
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.exceptions.JedisException;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 public class App {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final String PREFIX = "1793091408";
-    private static final Jedis JEDIS = new Jedis("localhost");
+  private static final String PREFIX = "1793091408";
 
-    private static void dump() {
-        try {
-            Set<String> matchingKeys = JEDIS.keys(PREFIX + "*");
-            if (matchingKeys.size() == 0) {
-                System.err.println("No keys found for prefix " + PREFIX);
-                System.exit(1);
-            }
+  private static List<RedisDumpedKeyValue> dump(String server, int port) {
+    List<RedisDumpedKeyValue> redisDumpedKeyValues = new ArrayList<>();
 
-            System.out.println("Found " + matchingKeys.size() + " keys");
-            RedisDumpedKeyValue[] dumpedKeyValues = new RedisDumpedKeyValue[matchingKeys.size()];
+    try {
+      Jedis jedis = new Jedis(server, port);
 
-            int index = 0;
-            for (String key : matchingKeys) {
-                dumpedKeyValues[index] = new RedisDumpedKeyValue(key, JEDIS.dump(key));
-                index += 1;
-            }
+      Set<String> matchingKeys = jedis.keys(PREFIX + "*");
+      if (matchingKeys.size() == 0) {
+        System.err.println("No keys found for prefix " + PREFIX);
+        System.exit(1);
+      }
 
-            MAPPER.writeValue(new File("/tmp/test.json"), dumpedKeyValues);
-            System.out.println("Wrote JSON file to /tmp/test.json");
-        } catch (JedisException|IOException je) {
-            System.err.println("Redis error exporting: " + je);
-            System.exit(1);
-        }
+      System.out.println("Found " + matchingKeys.size() + " keys");
+      for (String key : matchingKeys) {
+        redisDumpedKeyValues.add(new RedisDumpedKeyValue(key, jedis.dump(key)));
+      }
+
+      return redisDumpedKeyValues;
+    } catch (JedisException je) {
+      System.err.println("Redis error exporting from server: " + je);
+      System.exit(1);
     }
 
-    private static void restore() {
-        try {
-            RedisDumpedKeyValue[] deserialised = MAPPER.readValue(new File("/tmp/test.json"), RedisDumpedKeyValue[].class);
+    return redisDumpedKeyValues;
+  }
 
-            for (RedisDumpedKeyValue redisDumpedKeyValue : deserialised) {
-                JEDIS.restore(redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
-            }
-            System.out.println("Successfully restored " + deserialised.length + " keys");
-        } catch (JedisException|IOException je) {
-            System.err.println("Redis error importing: " + je);
-            System.exit(1);
-        }
-    }
-    public static void main(String[] args) throws IOException  {
-        MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
+  private static void restore(String server, int port, List<RedisDumpedKeyValue> redisDumpedKeyValues) {
+    Jedis jedis = new Jedis(server, port);
 
-        try {
-            if (args.length == 1 && args[0].equals("--restore")) {
-                restore();
-            } else {
-                dump();
-            }
-        } catch (JedisException je) {
-            System.out.println("Redis error: " + je);
-        }
+    try {
+      for (RedisDumpedKeyValue redisDumpedKeyValue : redisDumpedKeyValues) {
+        jedis.restore(redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
+      }
+      System.out.println("Successfully streamed " + redisDumpedKeyValues.size()+ " keys to " + server);
+    } catch (JedisException je) {
+      System.err.println("Redis error sending to server: " + je);
+      System.exit(1);
     }
+  }
+
+  private static String getServerFromArg(String arg) {
+    return arg.split(":")[0];
+  }
+
+  private static int getPortFromArgs(String arg) {
+    return arg.split(":").length == 2 ? Integer.parseInt(arg.split(":")[1]) : 6379;
+  }
+
+  public static void main(String[] args) {
+    if (args.length != 2) {
+      System.err.println("Usage: HelloRedis server1:port server2:port");
+      System.exit(1);
+    }
+
+    String sourceServer = getServerFromArg(args[0]);
+    int sourcePort = getPortFromArgs(args[0]);
+    String destServer = getServerFromArg(args[1]);
+    int destPort = getPortFromArgs(args[1]);
+
+    List<RedisDumpedKeyValue> dataFromSource = dump(sourceServer, sourcePort);
+    restore(destServer, destPort, dataFromSource);
+  }
 }
