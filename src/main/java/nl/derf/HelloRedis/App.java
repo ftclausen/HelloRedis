@@ -11,53 +11,35 @@ Notes for using with Learn:
  */
 
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.exceptions.JedisException;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import redis.clients.jedis.ScanParams;
+import redis.clients.jedis.ScanResult;
 
 public class App {
   private static final String PREFIX = "1793091408";
 
-  private static List<RedisDumpedKeyValue> dump(String server, int port) {
-    List<RedisDumpedKeyValue> redisDumpedKeyValues = new ArrayList<>();
+  private static void stream(String sourceServer, int sourcePort, String destServer, int destPort) {
+    Jedis source = new Jedis(sourceServer, sourcePort);
+    Jedis dest = new Jedis(destServer, destPort);
 
-    try {
-      Jedis jedis = new Jedis(server, port);
+    String nextCursor = "0";
+    ScanParams scanParams = new ScanParams();
+    scanParams.match(PREFIX + "*");
 
-      Set<String> matchingKeys = jedis.keys(PREFIX + "*");
-      if (matchingKeys.size() == 0) {
-        System.err.println("No keys found for prefix " + PREFIX);
-        System.exit(1);
+    System.out.print("Migrating");
+    while (true) {
+      ScanResult<String> scanResult = source.scan(nextCursor, scanParams);
+
+      for (String key: scanResult.getResult()) {
+        System.out.print(".");
+        byte[] dumpedKey = source.dump(key);
+        dest.restore(key, 0, dumpedKey);
       }
 
-      System.out.println("Found " + matchingKeys.size() + " keys");
-      for (String key : matchingKeys) {
-        redisDumpedKeyValues.add(new RedisDumpedKeyValue(key, jedis.dump(key)));
+      if (scanResult.isCompleteIteration()) {
+        break;
       }
 
-      return redisDumpedKeyValues;
-    } catch (JedisException je) {
-      System.err.println("Redis error exporting from server: " + je);
-      System.exit(1);
-    }
-
-    return redisDumpedKeyValues;
-  }
-
-  private static void restore(String server, int port, List<RedisDumpedKeyValue> redisDumpedKeyValues) {
-    Jedis jedis = new Jedis(server, port);
-
-    try {
-      for (RedisDumpedKeyValue redisDumpedKeyValue : redisDumpedKeyValues) {
-        jedis.restore(redisDumpedKeyValue.getKey(), 0, redisDumpedKeyValue.getValue());
-      }
-      System.out.println("Successfully streamed " + redisDumpedKeyValues.size()+ " keys to " + server);
-    } catch (JedisException je) {
-      System.err.println("Redis error sending to server: " + je);
-      System.exit(1);
+      nextCursor = scanResult.getCursor();
     }
   }
 
@@ -80,7 +62,6 @@ public class App {
     String destServer = getServerFromArg(args[1]);
     int destPort = getPortFromArgs(args[1]);
 
-    List<RedisDumpedKeyValue> dataFromSource = dump(sourceServer, sourcePort);
-    restore(destServer, destPort, dataFromSource);
+    stream(sourceServer, sourcePort, destServer, destPort);
   }
 }
