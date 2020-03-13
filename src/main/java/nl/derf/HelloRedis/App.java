@@ -14,8 +14,10 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.ScanParams;
 import redis.clients.jedis.ScanResult;
 
+import java.util.Arrays;
+
 public class App {
-  private static final String PREFIX = "1793091408";
+  private static final String PREFIX = "2066518051";
 
   private static void stream(String sourceServer, int sourcePort, String destServer, int destPort) {
     Jedis source = new Jedis(sourceServer, sourcePort);
@@ -25,14 +27,18 @@ public class App {
     ScanParams scanParams = new ScanParams();
     scanParams.match(PREFIX + "*");
 
-    System.out.print("Migrating");
+    System.out.println("Checking...");
     while (true) {
       ScanResult<String> scanResult = source.scan(nextCursor, scanParams);
 
       for (String key: scanResult.getResult()) {
-        System.out.print(".");
-        byte[] dumpedKey = source.dump(key);
-        dest.restore(key, 0, dumpedKey);
+        byte[] sourceDumpedValue = source.get(key.getBytes());
+        byte[] destDumpedValue = dest.get(key.getBytes());
+        if (Arrays.equals(sourceDumpedValue, destDumpedValue)) {
+          System.out.println(String.format("%s: values match: OK", key));
+        } else {
+          throw new RuntimeException("Values do not match for " + key);
+        }
       }
 
       if (scanResult.isCompleteIteration()) {
